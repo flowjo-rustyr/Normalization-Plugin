@@ -1,6 +1,8 @@
 import com.flowjo.lib.parameters.ParameterSelectionPanel;
 import com.flowjo.lib.parameters.ParameterSelectionPanel.eParameterSelectionMode;
 import com.flowjo.lib.parameters.ParameterSetMgrInterface;
+import com.treestar.flowjo.engine.EngineManager;
+import com.treestar.flowjo.engine.utility.RFlowCalculator;
 import com.treestar.lib.PluginHelper;
 import com.treestar.lib.core.ExportFileTypes;
 import com.treestar.lib.core.ExternalAlgorithmResults;
@@ -8,13 +10,14 @@ import com.treestar.lib.core.PopulationPluginInterface;
 import com.treestar.lib.data.StringUtil;
 import com.treestar.lib.file.FileUtil;
 import com.treestar.lib.gui.panels.FJLabel;
+import com.treestar.lib.prefs.HomeEnv;
 import com.treestar.lib.xml.SElement;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
-import java.io.File;
-import java.io.InputStream;
+import java.io.*;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,10 +31,13 @@ public class Normalization02 implements PopulationPluginInterface {
     private ExportFileTypes fileType = ExportFileTypes.CSV_SCALE;
     private static Icon gIcon = null;
     private static File gScriptFile = null;
+    private static String Prefix = "";
+    //private static int columnParsingStart = 5;
 
+//****************************************************************************************      POPULATION PLUGIN FUNCTIONS     ****************************************************************************
 
     @Override
-    public String getName() {return "Normalization 0.2"; }
+    public String getName() { return "Normalization02"; }
 
     @Override
     public String getVersion() { return gVersion; }
@@ -71,16 +77,27 @@ public class Normalization02 implements PopulationPluginInterface {
     //This is where i need to call the R script and output a CSV file
     @Override
    public ExternalAlgorithmResults invokeAlgorithm(SElement anSElement, File sampleFile, File outputFolder){
+
+       System.out.println("The Sample file Name is: " + sampleFile);
         //WRITE STUFF IN HERE
         ExternalAlgorithmResults results = new ExternalAlgorithmResults();
         if(!sampleFile.exists()){
             results.setErrorMessage("Sample does not exist!");
         }
         else{
-//            this.checkUseExistingFiles(anSElement);
-//            String trimmedFileName = StringUtil.rtrim(sampleFile.getName(), ".csv");
-//            File normResults = this.performNormalization(sampleFile, trimmedFileName, this.preprocessCompParameterNames(), outputFolder.getAbsolutePath());
-//            results.setCSVFile(normResults);
+//            CSV_FILE_NAME = sampleFile.getName();
+            String trimmedFileName = StringUtil.rtrim(sampleFile.getName(), ".csv");
+            //System.out.println(sampleFile);
+            long startTime = System.nanoTime();
+            File normResults = this.performNormalization(sampleFile, trimmedFileName, this.parameterNames, outputFolder.getAbsolutePath());
+            long estimatedTime = System.nanoTime() - startTime;
+            System.out.println(outputFolder.getAbsoluteFile());
+            System.out.println(normResults);
+
+            double seconds  = (double)estimatedTime/ 1000000000.0;
+
+            System.out.println("The elapsed time it took to run normalization in seconds was: " + seconds);
+            results.setCSVFile(normResults);
         }
         return  results;
     }
@@ -95,7 +112,7 @@ public class Normalization02 implements PopulationPluginInterface {
             result.addContent(elem);
             for (String pName : parameterNames){
                 SElement s = new SElement("P");
-                elem.setString("name", pName);
+                s.setString("name", pName);
                 elem.addContent(s);
             }
         }
@@ -134,14 +151,19 @@ public class Normalization02 implements PopulationPluginInterface {
         pane.setMinimumSize(dim);
         pane.setPreferredSize(dim);
 
-        pane.setSelectedParameters(parameterNames);
-        parameterNames.clear();
+        pane.setSelectedParameters(pNames); //was parameter names 
+        pNames.clear(); //parameter names
 
         String text2 = "This is a test string that i made to display something! The current num is: ";
         text2.toUpperCase();
+
+        //*************************************************************************************************************************************8
+       //Need to figure out how to make the number of parameters that a user selects dynamic so that they know
         int numofParameters;
         numofParameters = pane.getParameterSelection().size();
         guiObjects.add(text2 + numofParameters);
+        //*************************************************************************************************************************************8
+
         guiObjects.add(pane);
         //****************************************************************************************************************************************************************************************************************
 
@@ -152,16 +174,30 @@ public class Normalization02 implements PopulationPluginInterface {
 
 
         JLabel newCSVFileName = new JLabel();
-        newCSVFileName.setText("New CSV File Name:");
+        newCSVFileName.setText("CSV File Prefix:");
         newCSVFileName.setFont(new Font(outputField.getName(), Font.PLAIN, 16)); //Fix the font size to fit the label correctly
         outputField.add(newCSVFileName);
         outputField.setLayout(new FlowLayout(FlowLayout.LEFT));
 
         JTextField normCSVFile = new JTextField();
-        normCSVFile.setText("NORM_FileNameHere.csv");
+        //This needs to be the samplefile name
+        normCSVFile.setText("NORM_");//+ CSV_FILE_NAME);
         normCSVFile.setSize(800, 50);
+        Prefix = normCSVFile.getText();
         outputField.add(normCSVFile);
         guiObjects.add(outputField);
+
+        JLabel saveDirectory = new JLabel();
+        saveDirectory.setText("Save in:");
+        saveDirectory.setFont(new Font(outputField.getName(), Font.PLAIN, 16)); //Fix the font size to fit the label correctly
+        outputField.add(saveDirectory);
+        outputField.setLayout(new FlowLayout(FlowLayout.LEFT));
+
+        //TOO BIG!!!
+//        JFileChooser directory = new JFileChooser();
+//        directory.setCurrentDirectory(new java.io.File("."));
+//        directory.setDialogTitle("Directory Title");
+//        outputField.add(directory);
 
         int option = JOptionPane.showConfirmDialog(null, guiObjects.toArray(), "Normalization 0.2", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE, null);
 
@@ -169,6 +205,7 @@ public class Normalization02 implements PopulationPluginInterface {
        if (option == JOptionPane.OK_OPTION) {
             // user clicked ok, get all selected parameters
             parameterNames.addAll(pane.getParameterSelection());
+
             // make sure 'CellId' is included, so input data file will have it
             if (!parameterNames.contains("CellId"))
                 parameterNames.add("CellId");
@@ -177,20 +214,183 @@ public class Normalization02 implements PopulationPluginInterface {
         return false;
     }
 
-    //This function should get the R script
+//****************************************************************************************      NORMALIZATION FUNCTIONS     ****************************************************************************
+
+    /**
+     * This function should get the R script and return the path to the script
+     */
     private File getScriptFile(File absolutePath) {
-        if(gScriptFile == null) {
-            InputStream findScriptPath = this.getClass().getClassLoader().getResourceAsStream("scripts/RScript.Normalization.Template.R");
-            if(findScriptPath != null) {
-                try {
-                    File scriptFile = new File(absolutePath, "RScript.Normalization.Template.R");
-                    FileUtil.copyStreamToFile(findScriptPath, scriptFile);
-                    gScriptFile = scriptFile;
-                } catch (Exception exception) {
-                    ;
-                }
+//        if(gScriptFile == null) {
+//            InputStream findScriptPath = this.getClass().getClassLoader().getResourceAsStream("scripts/RScript.Normalization.Template.R");
+//            if(findScriptPath != null) {
+//                try {
+//                    File scriptFile = new File(absolutePath, "RScript.Normalization.Template.R");
+//                    FileUtil.copyStreamToFile(findScriptPath, scriptFile);
+//                    gScriptFile = scriptFile;
+//                } catch (Exception exception) {
+//                    ;
+//                }
+//            }
+//        }
+        URL url = getClass().getClassLoader().getResource("scripts/RScript.Normalization.Template.R");
+        if (url != null)
+            try {
+
+                gScriptFile = new File(url.toURI());
+
+            }catch (URISyntaxException exception) {
+            System.out.println("URL Exception");
             }
-        }
+
         return gScriptFile;
     }
+    /**
+     * This Function should return a file created from the Normalization R script
+     *
+     */
+    private File performNormalization(File fileName, String trimmedFileName, List<String> paramNames, String outputFilePath) {
+       //If the output file path is empty or doesn't exist we are going to save it in the users temp folder.
+        if (outputFilePath == null || outputFilePath.isEmpty()) {
+            outputFilePath = (new HomeEnv()).getUserTempFolder();
+        }
+
+        File tempOutputFile = new File(outputFilePath); //VAR 7
+        StringWriter SWriter = new StringWriter(); //VAR8
+        //VAR 9
+        File normResult = this.composeRNormalizationStatements(fileName, trimmedFileName, paramNames, tempOutputFile, SWriter);
+
+        if (normResult == null){
+            System.out.println("Norm result is null");
+            return null;
+        }
+        else {
+            trimmedFileName = trimmedFileName.replaceAll("..ExtNode", "");
+            String newFileName = "RScript.Normalization." + trimmedFileName + ".R"; //VAR 10
+            newFileName = newFileName.replaceAll(" ", "_");
+
+            File runRScript = new File(outputFilePath, newFileName);//VAR 11
+
+            try {
+                FileUtil.write(runRScript, SWriter.toString());
+                RFlowCalculator Batch = new RFlowCalculator(); //VAR12
+                Batch.executeRBatch(runRScript);
+                if (runRScript != null && runRScript.exists() && runRScript.delete()) {
+                    System.out.println("Deleted" + runRScript.getAbsolutePath());
+                }
+            }
+            catch (IOException exception){
+                System.out.println("IOexception in perform Normalization function");
+                exception.printStackTrace();
+            }
+
+            return normResult;
+        }
+    }
+
+    /**
+     *
+     * @param fileName
+     * @param trimmedFileName
+     * @param paramNames
+     * @param tempOutputFile
+     * @param SWriter
+     * @return File
+     */
+    private File composeRNormalizationStatements(File fileName, String trimmedFileName, List<String> paramNames, File tempOutputFile, StringWriter SWriter ) {
+        File scriptFile = this.getScriptFile(tempOutputFile); //VAR 7
+
+        if (scriptFile == null){
+            System.out.println("No Script File");
+            return null;
+        }
+        else{
+            BufferedReader BReader = null; //VAR 8
+            //just to check and see if we missed a .csv somewhere in the filename
+            if(trimmedFileName.endsWith(".csv")){
+                trimmedFileName = trimmedFileName.substring(0, trimmedFileName.length() - ".csv".length());
+            }
+            if(trimmedFileName.endsWith("..ExtNode")){
+                trimmedFileName = trimmedFileName.substring(0, trimmedFileName.length() - "..ExtNode".length());
+            }
+
+            //removes whitespace
+            trimmedFileName = trimmedFileName.trim();
+
+            System.out.println("compose R Normalization fileName: ");
+            System.out.println(fileName);
+
+            String newOutputFileName = Prefix + trimmedFileName; //+ ".csv"; //"Prefix" + trimmedFileName + ".csv"; VAR9
+
+            newOutputFileName = newOutputFileName.replaceAll(" ",  "_");
+
+            if (tempOutputFile == null){
+                tempOutputFile = fileName.getParentFile();
+            }
+
+            File fileResult = new File(tempOutputFile, newOutputFileName); //VAR 10
+            newOutputFileName = fileResult.getAbsolutePath();
+
+            if (EngineManager.isWindows()){
+                newOutputFileName = newOutputFileName.replaceAll("\\\\", "/");
+            }
+
+            try {
+                String reader = fileName.getAbsolutePath(); //VAR 11
+
+                if (EngineManager.isWindows()) {
+                    reader = reader.replaceAll("\\\\", "/");
+                }
+
+                BReader = new BufferedReader(new FileReader(scriptFile));
+
+
+                while (true) {
+                    String lineReader;
+                     while((lineReader = BReader.readLine()) != null) {
+
+                        lineReader = lineReader.replace("SG_DATA_FILE_PATH", reader);
+                        lineReader = lineReader.replace("SG_CSV_OUTPUT_FILE", newOutputFileName);
+
+
+                        System.out.println("The replaced Line for this script is: ");
+                        System.out.println(lineReader);
+
+                        SWriter.append(lineReader);
+                        SWriter.append('\n');
+
+//                        System.out.println("WE ARE IN COMPOSE R STATEMENTS");
+//                        System.out.println(reader);
+//                        System.out.println(newOutputFileName);
+                    }
+                    //WE ARE EXITING HERE!!!!!!!!!!!
+                    //System.out.println("Inside while (true) loop");
+                    //this appends a new line but are we doing a csv?
+                    SWriter.append(lineReader).append('\n');
+                    return fileResult;
+                }
+
+
+            }
+            catch (FileNotFoundException exception) {
+                exception.printStackTrace();
+            }
+            catch (IOException exception) {
+                exception.printStackTrace();
+            }
+            finally {
+                if (BReader != null) {
+                    try { BReader.close(); }
+                    catch (IOException exception) {
+                        exception.printStackTrace();
+                    }
+                }
+            }
+
+            System.out.println("Printing file Result");
+            System.out.println(fileResult);
+            return fileResult;
+        }
+    }
+
+
 }
