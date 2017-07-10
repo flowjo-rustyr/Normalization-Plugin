@@ -1,6 +1,6 @@
 library("scran")
 A <-read.csv("SG_DATA_FILE_PATH")
-Ax2 <- A[,5:dim(A)[2]]
+Ax2 <- A[,2:dim(A)[2]]
 
 sce2 <- newSCESet(countData=t(data.frame(Ax2)))
 sce2 <- calculateQCMetrics(sce2)
@@ -10,5 +10,4 @@ sce2 <- computeSumFactors(sce2, cluster=clusters2)
 # Now you can normalize manually by dividing each expression value by cell specific factor that the computeSumFactors method has calculated, i.e.:
 NormAx2 <- sweep(t(Ax2),MARGIN=2,sce2$size_factor,`/`)
 
-#write.csv(NormAx2, file = "SG_CSV_OUTPUT_FILE", quote = FALSE)
-write.table(NormAx2, file = "SG_CSV_OUTPUT_FILE", quote = FALSE, col.names = FALSE, sep = ",")
+write.csv(NormAx2, file = "SG_CSV_OUTPUT_FILE", quote = FALSE)
