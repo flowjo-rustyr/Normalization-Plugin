@@ -25,7 +25,7 @@ import java.util.List;
 /**
  * Created by Rusty Raymond on 6/30/2017.
  */
-public class Normalization02 implements PopulationPluginInterface {
+public class Normalization implements PopulationPluginInterface {
     private List<String> parameterNames = new ArrayList<String>();
     private static final String gVersion = "0.2";
     private ExportFileTypes fileType = ExportFileTypes.CSV_SCALE;
@@ -37,7 +37,7 @@ public class Normalization02 implements PopulationPluginInterface {
 //****************************************************************************************      POPULATION PLUGIN FUNCTIONS     ****************************************************************************
 
     @Override
-    public String getName() { return "Normalization02"; }
+    public String getName() { return "Normalization"; }
 
     @Override
     public String getVersion() { return gVersion; }
@@ -63,7 +63,7 @@ public class Normalization02 implements PopulationPluginInterface {
 
     //Used from the TopGenes Plugin
     @Override
-   public void setElement(SElement element){
+    public void setElement(SElement element){
         SElement params = element.getChild("Parameters");
         if (params == null)
             return;
@@ -76,23 +76,23 @@ public class Normalization02 implements PopulationPluginInterface {
 
     //This is where i need to call the R script and output a CSV file
     @Override
-   public ExternalAlgorithmResults invokeAlgorithm(SElement anSElement, File sampleFile, File outputFolder){
+    public ExternalAlgorithmResults invokeAlgorithm(SElement anSElement, File sampleFile, File outputFolder){
 
-       System.out.println("The Sample file Name is: " + sampleFile);
-        //WRITE STUFF IN HERE
         ExternalAlgorithmResults results = new ExternalAlgorithmResults();
+
+        //sampleFile.getName();
+        String defaultDocFolder = (new HomeEnv()).getUserDocumentsFolder();
+        File docFolder = new File(defaultDocFolder);
         if(!sampleFile.exists()){
             results.setErrorMessage("Sample does not exist!");
         }
         else{
-//            CSV_FILE_NAME = sampleFile.getName();
             String trimmedFileName = StringUtil.rtrim(sampleFile.getName(), ".csv");
-            //System.out.println(sampleFile);
             long startTime = System.nanoTime();
-            File normResults = this.performNormalization(sampleFile, trimmedFileName, this.parameterNames, outputFolder.getAbsolutePath());
+            File normResults = this.performNormalization(sampleFile, trimmedFileName, this.parameterNames, docFolder.getAbsolutePath());
             long estimatedTime = System.nanoTime() - startTime;
-            System.out.println(outputFolder.getAbsoluteFile());
-            System.out.println(normResults);
+//            System.out.println(outputFolder.getAbsoluteFile());
+//            System.out.println(normResults);
 
             double seconds  = (double)estimatedTime/ 1000000000.0;
 
@@ -103,8 +103,7 @@ public class Normalization02 implements PopulationPluginInterface {
     }
 
     @Override
-   public SElement getElement(){
-        //WRITE STUFF IN HERE
+    public SElement getElement(){
         SElement result = new SElement(getName());
 
         if (!parameterNames.isEmpty()){
@@ -126,10 +125,10 @@ public class Normalization02 implements PopulationPluginInterface {
 //
 //    }
     @Override
-    public boolean promptForOptions(SElement fcmlQueryElement, List<String> pNames) {
+    public boolean promptForOptions(SElement anSElement, List<String> pNames) {
 
         // Use a helper method to get a ParameterSetMgrInterface, used by ParameterSelectionPanel
-        ParameterSetMgrInterface mgr = PluginHelper.getParameterSetMgr(fcmlQueryElement);
+        ParameterSetMgrInterface mgr = PluginHelper.getParameterSetMgr(anSElement);
         if (mgr == null)
             return false;
 
@@ -137,7 +136,7 @@ public class Normalization02 implements PopulationPluginInterface {
         FJLabel explainText = new FJLabel();
         guiObjects.add(explainText);
         String text = "<html><body>";
-        text += "This plugin Normalizes a GENE SET and outputs it into a new CSV file";
+        text += "This plugin Normalizes a selection of genes and outputs the normalized data into a new CSV file";
         text += "<ul>";
         text += "</ul>";
         text += "</body></html>";
@@ -151,19 +150,18 @@ public class Normalization02 implements PopulationPluginInterface {
         pane.setMinimumSize(dim);
         pane.setPreferredSize(dim);
 
-        pane.setSelectedParameters(pNames); //was parameter names 
-        pNames.clear(); //parameter names
+        pane.setSelectedParameters(parameterNames); //was pName names
+        parameterNames.clear(); //pName names
 
-        String text2 = "This is a test string that i made to display something! The current num is: ";
-        text2.toUpperCase();
+        //String text2 = "This is a test string that i made to display something! The current num is: ";
 
         //*************************************************************************************************************************************8
-       //Need to figure out how to make the number of parameters that a user selects dynamic so that they know
-        int numofParameters;
-        numofParameters = pane.getParameterSelection().size();
-        guiObjects.add(text2 + numofParameters);
-        //*************************************************************************************************************************************8
-
+        //Need to figure out how to make the number of parameters that a user selects dynamic so that they know
+//        int numofParameters;
+//        numofParameters = pane.getParameterSelection().size();
+//        guiObjects.add(text2 + numofParameters);
+//        //*************************************************************************************************************************************8
+//
         guiObjects.add(pane);
         //****************************************************************************************************************************************************************************************************************
 
@@ -185,26 +183,30 @@ public class Normalization02 implements PopulationPluginInterface {
         normCSVFile.setSize(800, 50);
         Prefix = normCSVFile.getText();
         outputField.add(normCSVFile);
-        guiObjects.add(outputField);
 
-        JLabel saveDirectory = new JLabel();
-        saveDirectory.setText("Save in:");
-        saveDirectory.setFont(new Font(outputField.getName(), Font.PLAIN, 16)); //Fix the font size to fit the label correctly
-        outputField.add(saveDirectory);
-        outputField.setLayout(new FlowLayout(FlowLayout.LEFT));
+
+        JLabel saveText = new JLabel();
+        saveText.setText("(Saved in your Documents Folder)");
+        saveText.setFont(new Font(outputField.getName(), Font.PLAIN, 16));
+        outputField.add(saveText);
+
+        guiObjects.add(outputField);
 
         //TOO BIG!!!
 //        JFileChooser directory = new JFileChooser();
 //        directory.setCurrentDirectory(new java.io.File("."));
-//        directory.setDialogTitle("Directory Title");
+//        directory.showSaveDialog(outputField);
 //        outputField.add(directory);
+//        //outputField.setLayout(new FlowLayout(FlowLayout.RIGHT));
 
-        int option = JOptionPane.showConfirmDialog(null, guiObjects.toArray(), "Normalization 0.2", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE, null);
+        int option = JOptionPane.showConfirmDialog(null, guiObjects.toArray(), "Normalization", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE, null);
 
         //Here is where i would need to enable and disable the okay button if if the user
-       if (option == JOptionPane.OK_OPTION) {
+        if (option == JOptionPane.OK_OPTION) {
             // user clicked ok, get all selected parameters
             parameterNames.addAll(pane.getParameterSelection());
+
+            //outputField.add(directory);
 
             // make sure 'CellId' is included, so input data file will have it
             if (!parameterNames.contains("CellId"))
@@ -220,28 +222,29 @@ public class Normalization02 implements PopulationPluginInterface {
      * This function should get the R script and return the path to the script
      */
     private File getScriptFile(File absolutePath) {
-//        if(gScriptFile == null) {
-//            InputStream findScriptPath = this.getClass().getClassLoader().getResourceAsStream("scripts/RScript.Normalization.Template.R");
-//            if(findScriptPath != null) {
-//                try {
-//                    File scriptFile = new File(absolutePath, "RScript.Normalization.Template.R");
-//                    FileUtil.copyStreamToFile(findScriptPath, scriptFile);
-//                    gScriptFile = scriptFile;
-//                } catch (Exception exception) {
-//                    ;
-//                }
-//            }
-//        }
-        URL url = getClass().getClassLoader().getResource("scripts/RScript.Normalization.Template.R");
-        if (url != null)
-            try {
-
-                gScriptFile = new File(url.toURI());
-
-            }catch (URISyntaxException exception) {
-            System.out.println("URL Exception");
+                if(gScriptFile == null) {
+            InputStream findScriptPath = this.getClass().getClassLoader().getResourceAsStream("scripts/RScript.Normalization.Template.R");
+            if(findScriptPath != null) {
+                try {
+                    File scriptFile = new File(absolutePath, "RScript.Normalization.Template.R");
+                    FileUtil.copyStreamToFile(findScriptPath, scriptFile);
+                    gScriptFile = scriptFile;
+                } catch (Exception exception) {
+                    System.out.println("Script not found");
+                }
+                System.out.println("Script found");
             }
-
+        }
+//        URL url = getClass().getClassLoader().getResource("scripts/RScript.Normalization.Template.R");
+//        if (url != null)
+//            try {
+//
+//                gScriptFile = new File(url.toURI());
+//
+//            }catch (URISyntaxException exception) {
+//                System.out.println("URL Exception");
+//            }
+//
         return gScriptFile;
     }
     /**
@@ -249,9 +252,9 @@ public class Normalization02 implements PopulationPluginInterface {
      *
      */
     private File performNormalization(File fileName, String trimmedFileName, List<String> paramNames, String outputFilePath) {
-       //If the output file path is empty or doesn't exist we are going to save it in the users temp folder.
+        //If the output file path is empty or doesn't exist we are going to save it in the users temp folder.
         if (outputFilePath == null || outputFilePath.isEmpty()) {
-            outputFilePath = (new HomeEnv()).getUserTempFolder();
+            outputFilePath = (new HomeEnv()).getUserDocumentsFolder(); //Was  .getUserTempFolder();
         }
 
         File tempOutputFile = new File(outputFilePath); //VAR 7
@@ -277,6 +280,7 @@ public class Normalization02 implements PopulationPluginInterface {
                 if (runRScript != null && runRScript.exists() && runRScript.delete()) {
                     System.out.println("Deleted" + runRScript.getAbsolutePath());
                 }
+                Batch.deleteROutFile();
             }
             catch (IOException exception){
                 System.out.println("IOexception in perform Normalization function");
@@ -346,7 +350,7 @@ public class Normalization02 implements PopulationPluginInterface {
 
                 while (true) {
                     String lineReader;
-                     while((lineReader = BReader.readLine()) != null) {
+                    while((lineReader = BReader.readLine()) != null) {
 
                         lineReader = lineReader.replace("SG_DATA_FILE_PATH", reader);
                         lineReader = lineReader.replace("SG_CSV_OUTPUT_FILE", newOutputFileName);
