@@ -1,0 +1,41 @@
+library("scran")
+clusterread <- function(clusters2) {
+  out <- tryCatch(
+    {
+      clusters2 <- quickCluster(sce2)
+      sce2 <- computeSumFactors(sce2, cluster=clusters2)
+    },
+    error=function(cond) {
+      message("Here's the original error message:")
+      message(cond)
+       capture.output(cond, file = "SG_TXT_ERROR_FILE_outputScriptError.txt")
+		null
+      # Choose a return value in case of error
+      return(NA)
+    },
+    warning=function(cond) {
+      message("Here's the original warning message:")
+      message(cond)
+      capture.output(cond, file ="SG_TXT_ERROR_FILE_outputScriptWarning.txt")
+      # Choose a return value in case of warning
+      return(NULL)
+    },
+    finally={
+    }
+  )
+  return(out)
+}
+A <-read.csv("SG_DATA_FILE_PATH")
+rownames(A) <- A[,1]
+Ax1 <- A[,-1]
+
+sce2 <- newSCESet(countData=data.frame(Ax1))
+sce2 <- calculateQCMetrics(sce2)
+clusters2 <- 0
+clusters2 <- lapply(clusters2, clusterread)
+clusters2 <- quickCluster(sce2)
+sce2 <- computeSumFactors(sce2, cluster=clusters2)
+
+NormAx2 <- sweep(Ax1,MARGIN=2,sce2$size_factor,`/`)
+
+write.csv(NormAx2, file = "SG_CSV_OUTPUT_FILE", quote = FALSE)
