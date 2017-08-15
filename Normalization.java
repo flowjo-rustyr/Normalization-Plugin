@@ -12,12 +12,14 @@ import com.treestar.lib.file.FileUtil;
 import com.treestar.lib.gui.panels.FJLabel;
 import com.treestar.lib.prefs.HomeEnv;
 import com.treestar.lib.xml.SElement;
+import com.treestar.lib.FJPluginHelper;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.io.*;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,11 +30,16 @@ import java.util.List;
 public class Normalization implements PopulationPluginInterface {
     private List<String> parameterNames = new ArrayList<String>();
     private static final String gVersion = "0.2";
-    private ExportFileTypes fileType = ExportFileTypes.CSV_SCALE;
     private static Icon gIcon = null;
     private static File gScriptFile = null;
     private static String Prefix = "";
-  
+    private static int parameterSelectionCount = 0;
+    private List<String> outputFiles = new ArrayList<String>();
+    private static String fileErrorName;
+    private static String fileWarningName;
+
+//****************************************************************************************      POPULATION PLUGIN FUNCTIONS     ****************************************************************************
+
     @Override
     public String getName() { return "Normalization"; }
 
@@ -43,7 +50,8 @@ public class Normalization implements PopulationPluginInterface {
     public List<String> getParameters() { return parameterNames; }
 
     @Override
-    public ExportFileTypes useExportFileType() { return (fileType); }
+    public ExportFileTypes useExportFileType() { return (ExportFileTypes.CSV_PIR_SCALE); }
+
 
     @Override
     public Icon getIcon()
@@ -69,21 +77,23 @@ public class Normalization implements PopulationPluginInterface {
         }
     }
 
-
     @Override
     public ExternalAlgorithmResults invokeAlgorithm(SElement anSElement, File sampleFile, File outputFolder){
 
         ExternalAlgorithmResults results = new ExternalAlgorithmResults();
-
-        String defaultDocFolder = (new HomeEnv()).getUserDocumentsFolder();
-        File docFolder = new File(defaultDocFolder);
         if(!sampleFile.exists()){
             results.setErrorMessage("Sample does not exist!");
         }
         else{
             String trimmedFileName = StringUtil.rtrim(sampleFile.getName(), ".csv");
             long startTime = System.nanoTime();
-            File normResults = this.performNormalization(sampleFile, trimmedFileName, this.parameterNames, docFolder.getAbsolutePath());
+            File normResults = this.performNormalization(sampleFile, trimmedFileName, this.parameterNames, outputFolder.getAbsolutePath());
+
+            outputFiles.add(normResults.getAbsolutePath().toString());
+
+            FJPluginHelper.loadSamplesIntoWorkspace(anSElement, new String[]
+                    {outputFiles.get(0),});
+
             long estimatedTime = System.nanoTime() - startTime;
 
             double seconds  = (double)estimatedTime/ 1000000000.0;
@@ -110,16 +120,8 @@ public class Normalization implements PopulationPluginInterface {
         return result;
     }
 
-
-    //This function takes in as parameters a samplefile (csv file, a trimmed file name for us to append to, the list of
-    //parameters that a user selected, and the absolute path of the outputfile
-//    private File performNormalization(File fileToUse, String trimmedFile, List<String> paramNames, String absOutputFilePath){
-//
-//    }
     @Override
     public boolean promptForOptions(SElement anSElement, List<String> pNames) {
-
-        // Use a helper method to get a ParameterSetMgrInterface, used by ParameterSelectionPanel
         ParameterSetMgrInterface mgr = PluginHelper.getParameterSetMgr(anSElement);
         if (mgr == null)
             return false;
@@ -134,22 +136,33 @@ public class Normalization implements PopulationPluginInterface {
         text += "</body></html>";
         explainText.setText(text);
 
+        JLabel paramCount = new JLabel();
+        paramCount.setText("The Current number of parameters selected is: " + parameterSelectionCount);
+        guiObjects.add(paramCount);
+
         ParameterSelectionPanel pane = new ParameterSelectionPanel(mgr, eParameterSelectionMode.WithSetsAndParameters, true, false, false, true);
         Dimension dim = new Dimension(300, 500);
         pane.setMaximumSize(dim);
         pane.setMinimumSize(dim);
         pane.setPreferredSize(dim);
+        pane.addParameterSelectionListener(new ListSelectionListener() {
+            @Override
+            public void valueChanged(ListSelectionEvent e) {
+                parameterSelectionCount = pane.getParameterSelection().size();
+                paramCount.setText("The Current number of parameters selected is: " + parameterSelectionCount);
+            }
 
-        pane.setSelectedParameters(parameterNames); 
+        });
+
+        pane.setSelectedParameters(parameterNames);
         parameterNames.clear();
 
         guiObjects.add(pane);
-    
+
         JPanel outputField = new JPanel();
         TitledBorder border = BorderFactory.createTitledBorder(BorderFactory.createLineBorder(Color.BLACK),"Output Field");
         border.setTitleJustification(TitledBorder.LEFT);
         outputField.setBorder(border);
-
 
         JLabel newCSVFileName = new JLabel();
         newCSVFileName.setText("CSV File Prefix:");
@@ -160,14 +173,7 @@ public class Normalization implements PopulationPluginInterface {
         JTextField normCSVFile = new JTextField();
         normCSVFile.setText("NORM_");
         normCSVFile.setSize(800, 50);
-        Prefix = normCSVFile.getText();
         outputField.add(normCSVFile);
-
-
-        JLabel saveText = new JLabel();
-        saveText.setText("(Saved in your Documents Folder)");
-        saveText.setFont(new Font(outputField.getName(), Font.PLAIN, 16));
-        outputField.add(saveText);
 
         guiObjects.add(outputField);
 
@@ -175,13 +181,15 @@ public class Normalization implements PopulationPluginInterface {
 
         if (option == JOptionPane.OK_OPTION) {
             parameterNames.addAll(pane.getParameterSelection());
+            Prefix = normCSVFile.getText();
             if (!parameterNames.contains("CellId"))
                 parameterNames.add("CellId");
             return true;
         }
         return false;
     }
-    
+
+//****************************************************************************************      NORMALIZATION FUNCTIONS     ****************************************************************************
     /**
      * This function should get the R script and return the path to the script
      */
@@ -201,12 +209,13 @@ public class Normalization implements PopulationPluginInterface {
         }
         return gScriptFile;
     }
-    
+
     /**
      * This Function should return a file created from the Normalization R script
      *
      */
     private File performNormalization(File fileName, String trimmedFileName, List<String> paramNames, String outputFilePath) {
+        //If the output file path is empty or doesn't exist we are going to save it in the users temp folder.
         if (outputFilePath == null || outputFilePath.isEmpty()) {
             outputFilePath = (new HomeEnv()).getUserDocumentsFolder();
         }
@@ -239,7 +248,6 @@ public class Normalization implements PopulationPluginInterface {
                 System.out.println("IOexception in perform Normalization function");
                 exception.printStackTrace();
             }
-
             return normResult;
         }
     }
@@ -254,7 +262,7 @@ public class Normalization implements PopulationPluginInterface {
      * @return File
      */
     private File composeRNormalizationStatements(File fileName, String trimmedFileName, List<String> paramNames, File tempOutputFile, StringWriter SWriter ) {
-        File scriptFile = this.getScriptFile(tempOutputFile); 
+        File scriptFile = this.getScriptFile(tempOutputFile);
 
         if (scriptFile == null){
             System.out.println("No Script File");
@@ -268,12 +276,29 @@ public class Normalization implements PopulationPluginInterface {
             if(trimmedFileName.endsWith("..ExtNode")){
                 trimmedFileName = trimmedFileName.substring(0, trimmedFileName.length() - "..ExtNode".length());
             }
+
+            String errOutputName = trimmedFileName;
+
+            if(errOutputName.endsWith(".csv")){
+                errOutputName = errOutputName.substring(0, errOutputName.length() - ".csv".length());
+            }
+
+            fileErrorName = errOutputName + "_outputScriptError.txt";
+            fileWarningName = errOutputName + "_outputScriptWarning.txt";
+
+            if(!trimmedFileName.endsWith(".csv"))
+            {
+                trimmedFileName = trimmedFileName + ".csv";
+            }
+
             trimmedFileName = trimmedFileName.trim();
 
-            System.out.println("compose R Normalization fileName: ");
-            System.out.println(fileName);
+//          Uncomment to display the the filename of the R file
+//          System.out.println("compose R Normalization fileName: ");
+//          System.out.println(fileName);
 
             String newOutputFileName = Prefix + trimmedFileName;
+
             newOutputFileName = newOutputFileName.replaceAll(" ",  "_");
 
             if (tempOutputFile == null){
@@ -296,25 +321,25 @@ public class Normalization implements PopulationPluginInterface {
 
                 BReader = new BufferedReader(new FileReader(scriptFile));
 
-
                 while (true) {
                     String lineReader;
                     while((lineReader = BReader.readLine()) != null) {
 
                         lineReader = lineReader.replace("SG_DATA_FILE_PATH", reader);
                         lineReader = lineReader.replace("SG_CSV_OUTPUT_FILE", newOutputFileName);
+                        lineReader = lineReader.replace("SG_TXT_ERROR_FILE", errOutputName);
 
-                        System.out.println("The replaced Line for this script is: ");
-                        System.out.println(lineReader);
+                        //uncomment lines to see the replaced lines in the script
+//                      System.out.println("The replaced Line for this script is: ");
+//                      System.out.println(lineReader);
 
                         SWriter.append(lineReader);
                         SWriter.append('\n');
+
                     }
                     SWriter.append(lineReader).append('\n');
                     return fileResult;
                 }
-
-
             }
             catch (FileNotFoundException exception) {
                 exception.printStackTrace();
@@ -330,12 +355,7 @@ public class Normalization implements PopulationPluginInterface {
                     }
                 }
             }
-
-            System.out.println("Printing file Result");
-            System.out.println(fileResult);
             return fileResult;
         }
     }
-
-
 }
